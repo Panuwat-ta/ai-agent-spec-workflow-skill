@@ -179,7 +179,49 @@ async function validateAndConfirm(
   }
 }
 
-// ─── List Features ─────────────────────────────────────
+// ─── Git Integration ───────────────────────────────────
+function setupGitIgnore(cwd: string) {
+  const gitignorePath = path.join(cwd, '.gitignore');
+  if (fs.existsSync(gitignorePath)) {
+    let content = fs.readFileSync(gitignorePath, 'utf8');
+    if (!content.includes('.specs')) {
+      content += '\n# AI Agent Specs\n.specs/\n.agentignore\n';
+      fs.writeFileSync(gitignorePath, content, 'utf8');
+      console.log(c.dim('  [INFO] Added .specs/ to .gitignore'));
+    }
+  }
+}
+
+// ─── AI IDE Integration ────────────────────────────────
+function setupAIRules(cwd: string) {
+  const rulesPath = path.join(cwd, '.cursorrules');
+  if (!fs.existsSync(rulesPath)) {
+    const rulesContent = `# Spec-Driven Development Rules
+
+You are working in a project that uses the AI Agent Spec Workflow (\`.specs/\` directory).
+When the user asks you to implement a feature or write code, you MUST:
+
+1. Always check the active spec files in the \`.specs/\` folder (e.g., \`.specs/<feature>/tasks.md\`).
+2. Follow the design and constraints specified in \`design.md\`.
+3. STRICTLY keep the \`tasks.md\` checklist updated. Change \`- [ ]\` to \`- [x]\` as soon as you complete a task.
+4. Do not wait until the end of the implementation to update the tasks. Update them as you go.
+`;
+    fs.writeFileSync(rulesPath, rulesContent, 'utf8');
+    console.log(c.dim('  [INFO] Created .cursorrules to instruct AI IDEs to update task status.'));
+  }
+}
+
+function cleanSavedFile(filePath: string) {
+  if (fs.existsSync(filePath)) {
+    let content = fs.readFileSync(filePath, 'utf8');
+    const cleaned = content.replace(/---\s*<details>[\s\S]*?<\/details>\s*$/g, '').trim();
+    if (content !== cleaned) {
+      fs.writeFileSync(filePath, cleaned + '\n', 'utf8');
+    }
+  }
+}
+
+// ─── Feature Status ─────────────────────────────────────
 function listFeatures() {
   const cwd = process.cwd();
   const specsDir = path.join(cwd, '.specs');
@@ -259,6 +301,9 @@ async function initFeature(featureName: string) {
     fs.mkdirSync(specsDir, { recursive: true });
   }
 
+  setupGitIgnore(cwd);
+  setupAIRules(cwd);
+
   // Generate project-context.md
   const contextPath = path.join(specsDir, 'project-context.md');
   const contextContent = generateProjectContext(cwd);
@@ -311,6 +356,7 @@ async function initFeature(featureName: string) {
     await askQuestion(c.dim(`\n  -> Open .specs/${featureName}/requirements.md, let AI generate it, and save.\n     Press ENTER to validate and continue...`));
 
     await validateAndConfirm(reqPath, validateRequirements, 'requirements');
+    cleanSavedFile(reqPath);
     console.log(`  ${c.green('[OK] Requirements validated!')}`);
 
     config.phase = 'design';
@@ -337,6 +383,7 @@ async function initFeature(featureName: string) {
     await askQuestion(c.dim(`\n  -> Open .specs/${featureName}/design.md, let AI generate it, and save.\n     Press ENTER to validate and continue...`));
 
     await validateAndConfirm(designPath, validateDesign, 'design');
+    cleanSavedFile(designPath);
     console.log(`  ${c.green('[OK] Design validated!')}`);
 
     config.phase = 'tasks';
@@ -363,6 +410,7 @@ async function initFeature(featureName: string) {
     await askQuestion(c.dim(`\n  -> Open .specs/${featureName}/tasks.md, let AI generate it, and save.\n     Press ENTER to validate and complete...`));
 
     await validateAndConfirm(tasksPath, validateTasks, 'tasks');
+    cleanSavedFile(tasksPath);
     console.log(`  ${c.green('[OK] Tasks validated!')}`);
 
     config.phase = 'completed';

@@ -9,20 +9,29 @@ export interface ValidationResult {
   warnings: string[];
 }
 
+export interface TaskStatus {
+  total: number;
+  completed: number;
+  pending: number;
+  inProgress: number;
+  percent: number;
+}
+
 /**
  * Check if a file still contains only the original AI instruction template.
  * Returns true if the file has been filled with real content.
  */
 function hasRealContent(content: string): boolean {
   // If the file still has the placeholder text, AI hasn't written anything yet
-  if (content.includes('[Please replace this block with your generated')) {
+  if (content.includes('[Please replace this')) {
     return false;
   }
 
-  // Strip markdown headers and whitespace, check if there's meaningful content
+  // Strip markdown headers, blockquotes, and <details> sections
   const stripped = content
     .replace(/^#.*$/gm, '')       // remove headers
     .replace(/^>.*$/gm, '')       // remove blockquotes (AI instructions)
+    .replace(/<details>[\s\S]*?<\/details>/g, '') // remove details context
     .replace(/\s+/g, ' ')         // normalize whitespace
     .trim();
 
@@ -102,15 +111,54 @@ export function validateTasks(filePath: string): ValidationResult {
     return { isValid: false, warnings };
   }
 
-  // Check for checklist format
-  const hasChecklist = /\[[ x/]\]/i.test(content);
-  const taskCount = (content.match(/\[[ x/]\]/g) || []).length;
+  // Check for strict markdown checklist format
+  const checklistRegex = /^[ \t]*[-*][ \t]+\[([ x/])\]/gim;
+  const matches = [...content.matchAll(checklistRegex)];
+  const taskCount = matches.length;
 
-  if (!hasChecklist) {
-    warnings.push('💡 Tip: Consider using checklist format ([ ], [x]) for tracking task progress.');
+  if (taskCount === 0) {
+    warnings.push('[TIP] Consider using markdown checklist format (- [ ]) for tracking task progress.');
   } else if (taskCount < 3) {
-    warnings.push(`💡 Tip: Only ${taskCount} task(s) found. Consider breaking down into more granular tasks.`);
+    warnings.push(`[TIP] Only ${taskCount} task(s) found. Consider breaking down into more granular tasks.`);
   }
 
   return { isValid: true, warnings };
+}
+
+/**
+ * Parse tasks.md and return current status
+ */
+export function getTaskStatus(filePath: string): TaskStatus | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const checklistRegex = /^[ \t]*[-*][ \t]+\[([ x/])\]/gim;
+  
+  let total = 0;
+  let completed = 0;
+  let inProgress = 0;
+  let pending = 0;
+
+  let match;
+  while ((match = checklistRegex.exec(content)) !== null) {
+    if (match[1]) {
+      total++;
+      const state = match[1].toLowerCase();
+      if (state === 'x') completed++;
+      else if (state === '/') inProgress++;
+      else pending++;
+    }
+  }
+
+  if (total === 0) return null;
+
+  return {
+    total,
+    completed,
+    inProgress,
+    pending,
+    percent: Math.round((completed / total) * 100)
+  };
 }

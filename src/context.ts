@@ -58,9 +58,41 @@ export function detectTechStack(cwd: string): TechStack | null {
   return null;
 }
 
-export function scanDirectory(dir: string, prefix: string = '', depth: number = 0, maxDepth: number = 5): string {
+function getIgnores(cwd: string): string[] {
+  const ignores = ['.git', 'node_modules', 'dist', 'build', 'coverage', '.specs', '.idea', '.vscode', '__pycache__', '.next', 'target'];
+  
+  // Read .gitignore
+  const gitignorePath = path.join(cwd, '.gitignore');
+  if (fs.existsSync(gitignorePath)) {
+    const gitignore = fs.readFileSync(gitignorePath, 'utf8');
+    const parsed = gitignore.split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+      .map(line => line.replace(/\/$/, '')); // remove trailing slashes for simple matching
+    ignores.push(...parsed);
+  }
+
+  // Read .agentignore
+  const agentignorePath = path.join(cwd, '.agentignore');
+  if (fs.existsSync(agentignorePath)) {
+    const agentignore = fs.readFileSync(agentignorePath, 'utf8');
+    const parsed = agentignore.split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+      .map(line => line.replace(/\/$/, ''));
+    ignores.push(...parsed);
+  }
+
+  return [...new Set(ignores)];
+}
+
+export function scanDirectory(dir: string, prefix: string = '', depth: number = 0, maxDepth: number = 5, ignores?: string[]): string {
   if (depth > maxDepth) return '';
   let output = '';
+
+  if (!ignores) {
+    ignores = getIgnores(dir); // Initialize ignores at root
+  }
 
   let items: string[] = [];
   try {
@@ -69,8 +101,7 @@ export function scanDirectory(dir: string, prefix: string = '', depth: number = 
     return '';
   }
 
-  const ignores = ['.git', 'node_modules', 'dist', 'build', 'coverage', '.specs', '.idea', '.vscode', '__pycache__', '.next', 'target'];
-  items = items.filter(item => !ignores.includes(item) && !item.startsWith('.'));
+  items = items.filter(item => !ignores!.includes(item) && !item.startsWith('.'));
 
   items.forEach((item, index) => {
     const fullPath = path.join(dir, item);
@@ -87,7 +118,7 @@ export function scanDirectory(dir: string, prefix: string = '', depth: number = 
     output += `${prefix}${marker}${item}\n`;
 
     if (isDir) {
-      output += scanDirectory(fullPath, prefix + (isLast ? '    ' : '│   '), depth + 1, maxDepth);
+      output += scanDirectory(fullPath, prefix + (isLast ? '    ' : '│   '), depth + 1, maxDepth, ignores);
     }
   });
 

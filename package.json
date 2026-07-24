@@ -1,6 +1,6 @@
 {
   "name": "ai-agent-spec-workflow-skill",
-  "version": "1.2.2",
+  "version": "1.3.8",
   "description": "Spec-Driven Development CLI — Plan first, then build.",
   "bin": {
     "agent": "./dist/cli.js"

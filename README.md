@@ -34,6 +34,7 @@ npx agent user-authentication
 ```bash
 agent <feature-name>            # Start or resume a spec workflow
 agent --list                    # List all features and their status
+agent --status <feature-name>   # Show task completion status
 agent --reset <feature-name>    # Reset a feature workflow
 agent --version                 # Show version
 agent --help                    # Show help
@@ -55,6 +56,20 @@ $ agent user-authentication
 
   -> Open .specs/user-authentication/requirements.md, let AI generate it, and save.
      Press ENTER to validate and continue...
+```
+
+### Check Task Progress
+
+You can check your coding progress via the CLI:
+```bash
+$ agent --status user-authentication
+```
+
+```
+--- Task Status: user-authentication ---
+  [==========----------] 50% (5/10 Tasks Completed)
+  2 in progress
+  3 pending
 ```
 
 ## How It Works
