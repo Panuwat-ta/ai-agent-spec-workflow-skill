@@ -2,15 +2,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
+import { validateRequirements, validateDesign, validateTasks } from './validator';
 
 const args = process.argv.slice(2);
 
 function showHelp() {
   console.log(`
-Spec-Driven Development Skill CLI
+Spec-Driven Development CLI
 
 Usage:
-  agent <feature-name>           Initialize a new spec structure (implicit --init)
+  agent <feature-name>           Initialize a new spec structure
   agent --init <feature-name>    Initialize a new spec structure
 
 Examples:
@@ -29,7 +30,6 @@ function scanDirectory(dir: string, prefix: string = '', depth: number = 0, maxD
     return '';
   }
 
-  // Ignore common directories and hidden files/folders (except specific ones if needed)
   const ignores = ['.git', 'node_modules', 'dist', 'build', 'coverage', '.specs', '.idea', '.vscode'];
   items = items.filter(item => !ignores.includes(item) && !item.startsWith('.'));
 
@@ -64,6 +64,44 @@ function askQuestion(query: string): Promise<string> {
   return new Promise(resolve => rl.question(query, resolve));
 }
 
+/**
+ * Run validation on a spec file, print warnings, and ask user to retry if invalid.
+ * Returns true if validation passes (or user chooses to skip).
+ */
+async function validateAndConfirm(
+  filePath: string,
+  validateFn: (path: string) => { isValid: boolean; warnings: string[] },
+  stepName: string
+): Promise<void> {
+  while (true) {
+    const result = validateFn(filePath);
+
+    // Print warnings
+    if (result.warnings.length > 0) {
+      console.log('');
+      result.warnings.forEach(w => console.log(`   ${w}`));
+    }
+
+    if (result.isValid) {
+      // Valid — show tips if any, then proceed
+      if (result.warnings.length > 0) {
+        console.log('');
+      }
+      return;
+    }
+
+    // Invalid — ask user to retry or skip
+    console.log('');
+    const answer = await askQuestion(`   The ${stepName} appears incomplete. Press ENTER to re-check, or type "skip" to proceed anyway: `);
+    
+    if (answer.trim().toLowerCase() === 'skip') {
+      console.log(`   ⏩ Skipping validation for ${stepName}.`);
+      return;
+    }
+    // Otherwise loop and re-validate
+  }
+}
+
 async function initFeature(featureName: string) {
   const cwd = process.cwd();
   const specsDir = path.join(cwd, '.specs', featureName);
@@ -80,46 +118,94 @@ async function initFeature(featureName: string) {
     fs.writeFileSync(contextPath, contextContent, 'utf8');
   }
 
+  // Checkpoint config
   const configPath = path.join(specsDir, '.config.agent');
-  if (!fs.existsSync(configPath)) {
-    fs.writeFileSync(configPath, '', 'utf8');
+  let config = { phase: 'requirements' };
+  
+  if (fs.existsSync(configPath)) {
+    try {
+      const raw = fs.readFileSync(configPath, 'utf8');
+      if (raw.trim()) {
+        config = JSON.parse(raw);
+      }
+    } catch (e) {
+      console.log(`⚠️  Warning: Could not read .config.agent — starting from the beginning.`);
+      config = { phase: 'requirements' };
+    }
+  } else {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
   }
 
-  console.log(`\nInitializing spec workflow for: ${featureName}`);
-  console.log(`Project context saved to .specs/${featureName}/project-context.md\n`);
+  console.log(`\n🚀 Initializing spec workflow for: ${featureName}`);
+  console.log(`📁 Project context saved to .specs/${featureName}/project-context.md\n`);
 
-  // Write files with AI prompt templates sequentially
   const reqPath = path.join(specsDir, 'requirements.md');
   const designPath = path.join(specsDir, 'design.md');
   const tasksPath = path.join(specsDir, 'tasks.md');
 
-  if (!fs.existsSync(reqPath)) {
-    const reqContent = `# Requirements: ${featureName}\n\n> **@AI INSTRUCTION:**\n> Please read \`.specs/${featureName}/project-context.md\` to understand the project structure.\n> Then, write the User Stories and GIVEN/WHEN/THEN acceptance criteria for this feature here.\n>\n> [Please replace this block with your generated requirements]\n`;
-    fs.writeFileSync(reqPath, reqContent, 'utf8');
-    console.log(`[Step 1] Created requirements.md`);
-    await askQuestion(`👉 Please open .specs/${featureName}/requirements.md, let AI generate it, and save.\n   Press ENTER to continue to Design...`);
-  } else {
-    console.log(`[Step 1] requirements.md already exists. Skipping.`);
+  // Step 1: Requirements
+  if (config.phase === 'requirements') {
+    if (!fs.existsSync(reqPath)) {
+      const reqContent = `# Requirements: ${featureName}\n\n> **@AI INSTRUCTION:**\n> Please read \`.specs/${featureName}/project-context.md\` to understand the project structure.\n> Then, write the User Stories and GIVEN/WHEN/THEN acceptance criteria for this feature here.\n>\n> [Please replace this block with your generated requirements]\n`;
+      fs.writeFileSync(reqPath, reqContent, 'utf8');
+      console.log(`[Step 1/3] 📝 Created requirements.md`);
+    } else {
+      console.log(`[Step 1/3] 🔄 Resuming at requirements.md`);
+    }
+    await askQuestion(`👉 Please open .specs/${featureName}/requirements.md, let AI generate it, and save.\n   Press ENTER to validate and continue...`);
+    
+    // Validate before proceeding
+    await validateAndConfirm(reqPath, validateRequirements, 'requirements');
+    console.log(`   ✅ Requirements validated!`);
+    
+    config.phase = 'design';
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
   }
 
-  if (!fs.existsSync(designPath)) {
-    const designContent = `# Design: ${featureName}\n\n> **@AI INSTRUCTION:**\n> Based on the approved \`requirements.md\` and project context, please generate the technical design.\n> Include Architecture, Components, and API Contracts.\n>\n> [Please replace this block with your generated design]\n`;
-    fs.writeFileSync(designPath, designContent, 'utf8');
-    console.log(`\n[Step 2] Created design.md`);
-    await askQuestion(`👉 Please open .specs/${featureName}/design.md, let AI generate it, and save.\n   Press ENTER to continue to Tasks...`);
-  } else {
-    console.log(`[Step 2] design.md already exists. Skipping.`);
+  // Step 2: Design
+  if (config.phase === 'design') {
+    if (!fs.existsSync(designPath)) {
+      const designContent = `# Design: ${featureName}\n\n> **@AI INSTRUCTION:**\n> Based on the approved \`requirements.md\` and project context, please generate the technical design.\n> Include Architecture, Components, and API Contracts.\n>\n> [Please replace this block with your generated design]\n`;
+      fs.writeFileSync(designPath, designContent, 'utf8');
+      console.log(`\n[Step 2/3] 📝 Created design.md`);
+    } else {
+      console.log(`\n[Step 2/3] 🔄 Resuming at design.md`);
+    }
+    await askQuestion(`👉 Please open .specs/${featureName}/design.md, let AI generate it, and save.\n   Press ENTER to validate and continue...`);
+    
+    // Validate before proceeding
+    await validateAndConfirm(designPath, validateDesign, 'design');
+    console.log(`   ✅ Design validated!`);
+    
+    config.phase = 'tasks';
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
   }
 
-  if (!fs.existsSync(tasksPath)) {
-    const tasksContent = `# Tasks: ${featureName}\n\n> **@AI INSTRUCTION:**\n> Based on the approved \`design.md\`, please generate a checklist of actionable tasks.\n> Use \`[ ]\` for pending, \`[/]\` for in-progress, and \`[x]\` for completed.\n>\n> [Please replace this block with your generated task list]\n`;
-    fs.writeFileSync(tasksPath, tasksContent, 'utf8');
-    console.log(`\n[Step 3] Created tasks.md`);
-  } else {
-    console.log(`[Step 3] tasks.md already exists. Skipping.`);
+  // Step 3: Tasks
+  if (config.phase === 'tasks') {
+    if (!fs.existsSync(tasksPath)) {
+      const tasksContent = `# Tasks: ${featureName}\n\n> **@AI INSTRUCTION:**\n> Based on the approved \`design.md\`, please generate a checklist of actionable tasks.\n> Use \`[ ]\` for pending, \`[/]\` for in-progress, and \`[x]\` for completed.\n>\n> [Please replace this block with your generated task list]\n`;
+      fs.writeFileSync(tasksPath, tasksContent, 'utf8');
+      console.log(`\n[Step 3/3] 📝 Created tasks.md`);
+    } else {
+      console.log(`\n[Step 3/3] 🔄 Resuming at tasks.md`);
+    }
+    await askQuestion(`👉 Please open .specs/${featureName}/tasks.md, let AI generate it, and save.\n   Press ENTER to validate and complete...`);
+    
+    // Validate before completing
+    await validateAndConfirm(tasksPath, validateTasks, 'tasks');
+    console.log(`   ✅ Tasks validated!`);
+    
+    config.phase = 'completed';
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
   }
 
-  console.log(`\n✅ All spec files generated successfully! You can now start coding.`);
+  if (config.phase === 'completed') {
+    console.log(`\n🎉 All spec files generated and validated successfully!`);
+    console.log(`📂 Your specs are ready at: .specs/${featureName}/`);
+    console.log(`🚀 You can now start coding!\n`);
+  }
+
   rl.close();
 }
 
@@ -138,7 +224,6 @@ async function run() {
     showHelp();
     process.exit(0);
   } else if (command && !command.startsWith('-')) {
-    // Implicitly treat the first argument as the feature name if it doesn't start with a flag
     await initFeature(command);
   } else {
     console.log('Unknown command or missing parameter.');
