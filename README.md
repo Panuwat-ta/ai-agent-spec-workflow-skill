@@ -6,22 +6,24 @@ A CLI tool that enforces a structured **Spec-Driven Development** process for AI
 
 ## Features
 
-- **Structured Planning**: 3 distinct phases (Requirements → Design → Tasks).
-- **Step-by-Step Interactive Flow**: The CLI guides you through each phase one at a time.
-- **Smart Validation**: Automatically checks that each document has real content before moving on.
-- **Agent-Compatible**: Designed specifically to be used by AI Coding Agents (Cursor, Windsurf, Copilot, etc.).
-- **Progress Tracking**: Clear status tracking using `[ ]`, `[/]`, `[x]`.
-- **Smart Resume**: Checkpoint system remembers your progress — pick up exactly where you left off.
+- **Structured Planning**: 3 distinct phases (Requirements → Design → Tasks)
+- **Step-by-Step Interactive Flow**: The CLI guides you through each phase one at a time
+- **Smart Validation**: Checks that each document has real AI-generated content before moving on
+- **Auto Tech-Stack Detection**: Automatically detects your project's language, framework, and dependencies
+- **Cross-Referencing**: Each phase receives the content from the previous phase as context for the AI
+- **Smart Resume**: Checkpoint system remembers your progress — pick up exactly where you left off
+- **Graceful Ctrl+C**: Pause anytime and resume later with a friendly message
+- **Beautiful Terminal UI**: Color-coded output with progress bars
 
-## Installation & Setup
+## Installation
 
-Install the package globally to access the `agent` command from anywhere:
+Install globally:
 
 ```bash
 npm install -g ai-agent-spec-workflow-skill
 ```
 
-Or use it directly with `npx`:
+Or use directly with `npx`:
 
 ```bash
 npx agent user-authentication
@@ -29,53 +31,61 @@ npx agent user-authentication
 
 ## Usage
 
-Simply type `agent` followed by the name of the feature you want to build:
+```bash
+agent <feature-name>            # Start or resume a spec workflow
+agent --list                    # List all features and their status
+agent --reset <feature-name>    # Reset a feature workflow
+agent --version                 # Show version
+agent --help                    # Show help
+```
+
+### Example Workflow
 
 ```bash
-agent user-authentication
+$ agent user-authentication
 ```
 
-The CLI will automatically scan your project structure and guide you **step-by-step**:
-
 ```
-Initializing spec workflow for: user-authentication
-Project context saved to .specs/user-authentication/project-context.md
+--- Spec-Driven Development Workflow ---
+   Feature: user-authentication
 
-[Step 1] Created requirements.md
-👉 Please open .specs/user-authentication/requirements.md, let AI generate it, and save.
-   Press ENTER to continue to Design...
+  [Step 1/3] - Requirements
+
+  [CREATED] requirements.md
+
+  -> Open .specs/user-authentication/requirements.md, let AI generate it, and save.
+     Press ENTER to validate and continue...
 ```
 
 ## How It Works
 
 ### Phase 1: Requirements (`requirements.md`)
-- The CLI creates the file and pauses.
+- The CLI creates the file with a detailed prompt template and your project context.
 - Open the file in your AI-powered IDE and let the AI generate User Stories and Acceptance Criteria.
-- The CLI validates that the file has real content (not just the template).
-- **Action**: Review, save, and press **ENTER** in your terminal.
+- Press ENTER — the CLI validates the content has real requirements, then moves on.
 
 ### Phase 2: Design (`design.md`)
-- The CLI creates the design file.
+- The CLI creates the design file with **your approved requirements embedded** as context.
 - Let the AI define the architecture, data models, and API contracts.
-- The CLI validates that design content was actually generated.
-- **Action**: Review, save, and press **ENTER** in your terminal.
+- Press ENTER — the CLI validates and moves on.
 
 ### Phase 3: Tasks (`tasks.md`)
-- The CLI creates the final checklist file.
+- The CLI creates the task file with **your approved design embedded** as context.
 - Let the AI break the design down into an actionable step-by-step checklist.
-- The CLI validates that tasks were generated with proper checklist format.
-- **Action**: You approve the checklist, and the AI begins coding!
+- Press ENTER — done!
 
-> **💡 Smart Resume**: If you exit the CLI midway through, simply run `agent <feature-name>` again. It will automatically detect your progress and resume exactly where you left off!
+> **💡 Smart Resume**: Exit anytime with Ctrl+C. Run `agent <feature-name>` again to pick up exactly where you left off.
+
+> **🔍 Auto-Detection**: The CLI automatically detects your tech stack (Node.js, Python, Go, Rust, Java, etc.) and includes it in the project context for better AI results.
 
 ## Generated File Structure
 
 ```
 .specs/user-authentication/
-├── project-context.md    ← Auto-generated project structure for AI context
+├── project-context.md    ← Auto-generated (tech stack + directory tree)
 ├── requirements.md       ← User Stories & Acceptance Criteria
-├── design.md             ← Architecture & API Contracts
-├── tasks.md              ← Actionable checklist
+├── design.md             ← Architecture & API Contracts (with requirements context)
+├── tasks.md              ← Actionable checklist (with design context)
 └── .config.agent         ← Checkpoint state (auto-managed)
 ```
 
